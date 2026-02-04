@@ -2,14 +2,14 @@ name: RSS to Discord
 
 on:
   schedule:
-    - cron: '*/5 * * * *' # 30分おきに自動実行
-  workflow_dispatch:      # 手動実行ボタン
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # 記録ファイルを保存するために必要
+      contents: write
 
     steps:
       - name: Checkout code
@@ -28,6 +28,7 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RSS_URL: ${{ secrets.RSS_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  # ←ここを追加しました！
         run: python main.py
 
       - name: Commit and push state
