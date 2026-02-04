@@ -1,24 +1,24 @@
+import os
 import feedparser
 import requests
-import time
-import os
 
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 RSS_URL = os.environ["RSS_URL"]
 
-posted = set()
+def post_to_discord(title: str, link: str):
+    data = {"content": f"📰 {title}\n{link}"}
+    r = requests.post(WEBHOOK_URL, json=data, timeout=30)
+    r.raise_for_status()
 
-while True:
+def main():
     feed = feedparser.parse(RSS_URL)
+    # 最新から最大5件だけ送る（多すぎるなら 1 にしてOK）
     for entry in feed.entries[:5]:
-        link = entry.link
-        title = entry.title
+        title = getattr(entry, "title", "No title")
+        link = getattr(entry, "link", "")
+        if link:
+            post_to_discord(title, link)
 
-        if link not in posted:
-            data = {
-                "content": f"📰 {title}\n{link}"
-            }
-            requests.post(WEBHOOK_URL, json=data)
-            posted.add(link)
+if __name__ == "__main__":
+    main()
 
-    time.sleep(900)  # 15分ごと
