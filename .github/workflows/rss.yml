@@ -20,20 +20,24 @@ jobs:
         run: |
           pip install feedparser requests
 
+      # 👇 ここ：キャッシュ復元（実行前）
       - name: Restore state cache
         uses: actions/cache/restore@v4
         with:
           path: state.json
           key: rss-state
 
+      # 👇 ここ：実行
       - name: Run script
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RSS_URL: ${{ secrets.RSS_URL }}
         run: python main.py
 
+      # 👇 ここ：キャッシュ保存（実行後）
       - name: Save state cache
         uses: actions/cache/save@v4
         with:
           path: state.json
           key: rss-state
+
