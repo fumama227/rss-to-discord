@@ -2,12 +2,13 @@ name: RSS to Discord
 
 on:
   schedule:
-    - cron: "*/15 * * * *"  # 15分ごと（無料枠でOK）
+    - cron: "*/15 * * * *" # 15分ごと
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,7 +23,7 @@ jobs:
 
       - name: Run script
         env:
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RSS_URL: ${{ secrets.RSS_URL }}
         run: |
           python main.py
