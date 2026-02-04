@@ -1,0 +1,28 @@
+name: RSS to Discord
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"  # 15分ごと（無料枠でOK）
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install feedparser requests
+
+      - name: Run script
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          RSS_URL: ${{ secrets.RSS_URL }}
+        run: |
+          python main.py
