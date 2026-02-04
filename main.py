@@ -1,9 +1,10 @@
 import feedparser
 import requests
 import time
+import os
 
-
-RSS_URL = "https://b.hatena.ne.jp/hotentry.rss"
+WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
+RSS_URL = os.environ["RSS_URL"]
 
 posted = set()
 
