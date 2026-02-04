@@ -2,7 +2,7 @@ name: RSS to Discord
 
 on:
   schedule:
-    - cron: "*/15 * * * *" # 15分ごと
+    - cron: "*/5 * * * *" # 15分ごと
   workflow_dispatch:
 
 jobs:
