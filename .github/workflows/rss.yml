@@ -2,13 +2,12 @@ name: RSS to Discord
 
 on:
   schedule:
-    - cron: "*/5 * * * *" # 15分ごと
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -21,9 +20,20 @@ jobs:
         run: |
           pip install feedparser requests
 
+      - name: Restore state cache
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: rss-state
+
       - name: Run script
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           RSS_URL: ${{ secrets.RSS_URL }}
-        run: |
-          python main.py
+        run: python main.py
+
+      - name: Save state cache
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: rss-state
