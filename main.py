@@ -2,7 +2,7 @@ import feedparser
 import requests
 import time
 
-WEBHOOK_URL = https://discord.com/api/webhooks/1468517798186848302/LcXcIxvA95awBpH7BmYEhkzHOGhscTE0H9pmLdYyYF1u6VJh8XWF0TW0ZEiYacUQ6vvF
+
 RSS_URL = "https://b.hatena.ne.jp/hotentry.rss"
 
 posted = set()
