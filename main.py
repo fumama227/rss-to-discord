@@ -4,16 +4,24 @@ from pathlib import Path
 import feedparser
 import requests
 
+# 設定（GitHubのSecretsにGOOGLE_CHAT_WEBHOOKを追加してください）
 WEBHOOK_OTHER = os.environ.get("DISCORD_WEBHOOK_URL")
 WEBHOOK_YUTAI = os.environ.get("WEBHOOK_YUTAI")
 WEBHOOK_KESSAN = os.environ.get("WEBHOOK_KESSAN")
+GOOGLE_CHAT_WEBHOOK = os.environ.get("GOOGLE_CHAT_WEBHOOK") # ここがGeminiへの入り口
 RSS_URLS = [os.environ.get("RSS_URL"), os.environ.get("RSS_URL_2")]
 
-def post_to_discord(webhook_url, title, link):
-    current_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
-    # 投稿案の生成は「あきらめて」、リンクを届けることに集中
-    content = f"📰 **【新着速報】**\n{title}\n\n🔗 このニュースで投稿を作るなら、URLをGeminiに貼ってね！\n{link}"
-    requests.post(current_webhook, json={"content": content}, timeout=30)
+def post_to_services(webhook_url, title, link):
+    # 1. Discordへ送信
+    discord_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
+    content = f"📰 **【新着速報】**\n{title}\n\n🔗 {link}"
+    requests.post(discord_webhook, json={"content": content}, timeout=30)
+    
+    # 2. Google Chat (Gemini)へ送信
+    if GOOGLE_CHAT_WEBHOOK:
+        # Geminiが読みやすい形式で飛ばす
+        gchat_content = f"調査依頼：{title}\nURL：{link}\nふーままとしてお得度を判定して投稿案を作って。"
+        requests.post(GOOGLE_CHAT_WEBHOOK, json={"text": gchat_content}, timeout=30)
 
 def main():
     state_path = Path("state.json")
@@ -37,7 +45,7 @@ def main():
             elif any(k in title for k in ["上方修正", "黒字", "増配", "サプライズ"]):
                 target_webhook = WEBHOOK_KESSAN
                 
-            post_to_discord(target_webhook, title, link)
+            post_to_services(target_webhook, title, link)
             new_seen_list.append(eid)
     
     updated_seen = (new_seen_list + last_seen_list)[:100]
