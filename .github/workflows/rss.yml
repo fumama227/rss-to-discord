@@ -2,7 +2,7 @@ name: RSS to Discord
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -20,9 +20,15 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Install Google Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
       - name: Install dependencies
         run: |
-          # ブラウザ操作用の selenium と webdriver-manager を追加
           pip install feedparser requests beautifulsoup4 selenium webdriver-manager
 
       - name: Run script
