@@ -2,9 +2,8 @@ name: RSS to Discord
 
 on:
   schedule:
-    # 30分おきに自動実行
-    - cron: '*/5 * * * *'
-  workflow_dispatch: # 手動で「Run workflow」できるようにする設定
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -23,8 +22,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # 記事の本文を読み取るために beautifulsoup4 を追加しました
-          pip install feedparser requests beautifulsoup4
+          # ブラウザ操作用の selenium と webdriver-manager を追加
+          pip install feedparser requests beautifulsoup4 selenium webdriver-manager
 
       - name: Run script
         env:
