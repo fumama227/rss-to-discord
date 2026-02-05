@@ -1,9 +1,14 @@
 import os
 import json
+import time
 from pathlib import Path
 import feedparser
 import requests
-from bs4 import BeautifulSoup # 本文抽出用のツール
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 # 設定
 WEBHOOK_OTHER = os.environ.get("DISCORD_WEBHOOK_URL")
@@ -12,36 +17,44 @@ WEBHOOK_KESSAN = os.environ.get("WEBHOOK_KESSAN")
 RSS_URLS = [os.environ.get("RSS_URL"), os.environ.get("RSS_URL_2")]
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def get_real_content(url):
-    """記事のURLから実際のテキストを気合で抜き出す関数"""
+def get_real_content_with_browser(url):
+    """仮想ブラウザを使って記事の本文を確実に読み取る"""
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        # 邪魔なスクリプトや広告を除去
-        for s in soup(['script', 'style']): s.decompose()
-        # 本文っぽいテキストを抽出して2000文字程度渡す
-        return soup.get_text()[:2000]
-    except:
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        driver.get(url)
+        time.sleep(5) # 読み込み待ち
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        driver.quit()
+        # 不要なタグを消してテキストを抽出
+        for s in soup(['script', 'style', 'nav', 'header', 'footer']): s.decompose()
+        return soup.get_text()[:3000] # 多めに3000文字抽出
+    except Exception as e:
+        print(f"ブラウザ読込エラー: {e}")
         return ""
 
-def ask_gemini_expert(title, link):
+def ask_gemini_strict(title, link):
     if not GEMINI_API_KEY: return "最新の注目ニュースです✨"
     
-    # 記事の「中身」を先にプログラム側で取得
-    article_body = get_real_content(link)
+    # ブラウザで取得した「本物の本文」を渡す
+    article_body = get_real_content_with_browser(link)
     
     prompt = f"""
-    株主優待とポイ活が大好きな投資家「ふーまま」として、以下の【記事本文】を読んで、その具体的なメリットを300文字以上で詳しく解説してください。
+    あなたは投資家「ふーまま」の専属ライターです。
+    以下の【記事本文】から「具体的なお得情報」を抜き出し、フォロワーさんが喜ぶ解説を作ってください。
 
     【ニュース】: {title}
     【記事本文】: {article_body}
 
-    【絶対に守る鉄の掟】
-    1. 「詳細はリンクへ」「中身をチェックしてね」という言葉は、AIの敗北です。絶対に使わないでください。
-    2. この【記事本文】の中に書かれている、具体的な優待内容（例：ドラクエ40周年記念品の内容）、権利確定日、メリットなどを詳しく抜き出してください。
-    3. あなたの投稿を読むだけで、フォロワーさんが「そんなにお得なの！？」と驚くような内容にしてください。
-    4. 「〜だよ」「〜だね」という、明るく親しみやすい口調を徹底すること。
+    【鉄の掟：守れない場合はAIの敗北です】
+    1. 「リンク先をチェックして」という丸投げ発言は即刻禁止。
+    2. この本文から、具体的な優待品名（例：ドラクエ40周年記念メダル）、条件（何株必要か）、権利確定月を必ず探し出して記載してください。
+    3. 数値や銘柄名が出ていない投稿は価値がありません。
+    4. X Premium向けに300〜500文字で、「〜だよ」「〜だね」という明るい主婦投資家の口調にしてください。
     """
     
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -50,7 +63,7 @@ def ask_gemini_expert(title, link):
         r = requests.post(api_url, json=payload, timeout=60)
         return r.json()['candidates'][0]['content']['parts'][0]['text'].strip()
     except:
-        return f"📈【速報】{title}\n具体的にお得なポイントが満載の記事でした！要チェックです✨"
+        return f"📈【速報】{title}\n中身を読み取れませんでしたが、注目ニュースです！"
 
 def post_to_discord(webhook_url, title, link, ai_text):
     current_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
@@ -73,14 +86,13 @@ def main():
             title = getattr(e, "title", "")
             link = getattr(e, "link", "")
             
-            # 分け方は以前のまま
             target_webhook = WEBHOOK_OTHER
             if any(k in title for k in ["優待", "記念", "QUO", "カタログ"]):
                 target_webhook = WEBHOOK_YUTAI
             elif any(k in title for k in ["上方修正", "黒字", "増配", "サプライズ"]):
                 target_webhook = WEBHOOK_KESSAN
                 
-            ai_text = ask_gemini_expert(title, link)
+            ai_text = ask_gemini_strict(title, link)
             post_to_discord(target_webhook, title, link, ai_text)
             new_seen_list.append(eid)
     
