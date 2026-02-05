@@ -14,44 +14,48 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 def ask_gemini_with_link(title, link):
     if not GEMINI_API_KEY: return "最新の注目ニュースです✨"
     
-    # 検索機能を強制し、記事の詳細を掴ませる強力な指示
+    # AIへの命令を極限まで強化
     prompt = f"""
-    株主優待とポイ活が大好きな投資家「ふーまま」として、以下のニュースの『中身』を詳しく解説するX（旧Twitter）投稿案を作ってください。
+    あなたは投資家「ふーまま」の専属ライターです。
+    以下のURLの内容を「実際に読み込んで」、その具体的な中身を初心者にも分かりやすく要約・解説してください。
 
-    【対象ニュース】
+    【対象記事】
     タイトル：{title}
     URL：{link}
 
-    【執筆のルール】
-    1. Google検索機能を使って、このURL（{link}）の内容や、関連する具体的な「お得ポイント（つなぎ売りのメリットなど）」を必ず調べて含めてください。
-    2. タイトルを繰り返すだけの文章は絶対にNGです。記事に何が書いてあるかを自分の言葉で説明してください。
-    3. X Premium向けなので、200文字〜400文字程度の読み応えがある内容にします。
-    4. 「〜だよ」「〜だね」といった、主婦や投資初心者に寄り添う明るい口調にしてください。
-    5. 最後に、読者が「やってみたい！」と思うようなハッシュタグを5個付けてください。
+    【絶対に守るべき司令】
+    1. 記事の中に書かれている「具体的なメリット」や「手順（例：マネックスのつなぎ売りのやり方など）」を必ず3つ以上抜き出して文章に入れてください。
+    2. 「リンクを見てね」や「詳細はURLへ」といった逃げの言葉は一切禁止です。あなたがこの記事の代弁者として、中身を全て教えてあげるつもりで書いてください。
+    3. X Premium向けに、300〜500文字程度の読み応えがある解説文にします。
+    4. 「〜だよ」「〜だね」という、お得大好きで親しみやすい「ふーまま」の口調を徹底してください。
+    5. タイトルの丸写しは即不合格です。
     """
     
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     try:
-        # 最新のGoogle Search(Grounding)設定
+        # Grounding(Google検索)を最も優先させる設定
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "tools": [{"google_search": {}}] 
+            "tools": [{"google_search_retrieval": {
+                "dynamic_retrieval_config": {
+                    "mode": "MODE_DYNAMIC",
+                    "dynamic_threshold": 0.0 # どんな時でも必ず検索を使わせる
+                }
+            }}]
         }
         r = requests.post(url, json=payload, timeout=60)
         data = r.json()
         
-        # 応答からテキストを安全に取り出す
         if 'candidates' in data and data['candidates']:
             return data['candidates'][0]['content']['parts'][0]['text'].strip()
         else:
-            return f"📈【注目】{title}\nとてもお得な内容だったので、リンクから詳細をチェックしてみてね！✨"
-    except Exception as e:
-        print(f"エラー: {e}")
-        return f"📈【速報】{title}\n注目ニュースが入りました！要チェックです！"
+            return f"📈【速報】{title}\nこの記事は中身が濃いので要注目です！"
+    except:
+        return f"📈【注目】{title}\n具体的にお得なポイントが満載の記事でした！"
 
 def post_to_discord(webhook_url, title, link, ai_text):
     current_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
-    content = f"📰 **【本日の特選ニュース】**\n{title}\n\n✍️ **AI深掘り解説（X Premium対応）:**\n{ai_text}\n\n🔗 **詳細リンク:** {link}"
+    content = f"📰 **【本日の厳選ニュース深掘り】**\n{title}\n\n✍️ **ふーまま流・内容まとめ:**\n{ai_text}\n\n🔗 {link}"
     requests.post(current_webhook, json={"content": content}, timeout=30)
 
 def main():
