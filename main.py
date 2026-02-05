@@ -14,38 +14,40 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 def ask_gemini_with_link(title, link):
     if not GEMINI_API_KEY: return "最新の注目ニュースです✨"
     
-    # リンク先の中身も含めてAIに丸投げするプロンプト
+    # 検索機能を強制し、記事の詳細を掴ませる強力な指示
     prompt = f"""
-    株主優待とポイ活が大好きな投資家「ふーまま」として、以下のニュースについてX（旧Twitter）向けの魅力的な長文紹介文を作成してください。
-    
-    【最重要：詳細リンクを確認してください】
-    リンク先の記事内容を読み込み、何が「お得」で、どんな「メリット」があるのかを具体的に噛み砕いて解説してください。
-    URL: {link}
+    株主優待とポイ活が大好きな投資家「ふーまま」として、以下のニュースの『中身』を詳しく解説するX（旧Twitter）投稿案を作ってください。
 
-    【投稿の構成】
-    1. 【ワクワクする導入】（例：これ知ってる？すごいお得技見つけたよ！💖）
-    2. 【記事内容の具体的な要約】（マネックス証券のつなぎ売りなど、具体的な手法や銘柄があれば詳しく）
-    3. 【ふーまま流の活用アドバイス】（主婦や初心者目線で「こうするといいよ！」という一言）
-    4. 【フォロワーへの問いかけ】（みんなはもう準備した？など）
+    【対象ニュース】
+    タイトル：{title}
+    URL：{link}
 
-    【ルール】
-    ・X Premium向けなので、文字数は気にせず、読み応えのある内容にする。
-    ・「〜だよ」「〜だね」といった明るく親しみやすい口調。
-    ・タイトルの丸写しは厳禁。記事の「中身」を自分の言葉で語る。
-    ・ハッシュタグを4〜5個つける。
+    【執筆のルール】
+    1. Google検索機能を使って、このURL（{link}）の内容や、関連する具体的な「お得ポイント（つなぎ売りのメリットなど）」を必ず調べて含めてください。
+    2. タイトルを繰り返すだけの文章は絶対にNGです。記事に何が書いてあるかを自分の言葉で説明してください。
+    3. X Premium向けなので、200文字〜400文字程度の読み応えがある内容にします。
+    4. 「〜だよ」「〜だね」といった、主婦や投資初心者に寄り添う明るい口調にしてください。
+    5. 最後に、読者が「やってみたい！」と思うようなハッシュタグを5個付けてください。
     """
     
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     try:
-        # Google Search(Grounding)機能を有効にして、最新のリンク先を見に行かせる
+        # 最新のGoogle Search(Grounding)設定
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "tools": [{"google_search_retrieval": {}}] 
+            "tools": [{"google_search": {}}] 
         }
         r = requests.post(url, json=payload, timeout=60)
-        return r.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-    except:
-        return f"📈【注目】{title}\n中身がすごく良い記事だったので、ぜひ詳細リンクからチェックしてみて！✨"
+        data = r.json()
+        
+        # 応答からテキストを安全に取り出す
+        if 'candidates' in data and data['candidates']:
+            return data['candidates'][0]['content']['parts'][0]['text'].strip()
+        else:
+            return f"📈【注目】{title}\nとてもお得な内容だったので、リンクから詳細をチェックしてみてね！✨"
+    except Exception as e:
+        print(f"エラー: {e}")
+        return f"📈【速報】{title}\n注目ニュースが入りました！要チェックです！"
 
 def post_to_discord(webhook_url, title, link, ai_text):
     current_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
@@ -75,7 +77,6 @@ def main():
             else:
                 target_webhook = WEBHOOK_OTHER
                 
-            # タイトルだけでなく「リンク」も渡してAIに調べさせる
             ai_text = ask_gemini_with_link(title, link)
             post_to_discord(target_webhook, title, link, ai_text)
             new_seen_list.append(eid)
