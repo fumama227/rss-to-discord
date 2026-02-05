@@ -27,8 +27,10 @@ jobs:
       - name: Run script
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          WEBHOOK_YUTAI: ${{ secrets.WEBHOOK_YUTAI }}
+          WEBHOOK_KESSAN: ${{ secrets.WEBHOOK_KESSAN }}
           RSS_URL: ${{ secrets.RSS_URL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}  # ←ここを追加しました！
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
 
       - name: Commit and push state
