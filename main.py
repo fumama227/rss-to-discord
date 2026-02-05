@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import feedparser
 import requests
-import re
+from bs4 import BeautifulSoup # 本文抽出用のツール
 
 # 設定
 WEBHOOK_OTHER = os.environ.get("DISCORD_WEBHOOK_URL")
@@ -12,48 +12,45 @@ WEBHOOK_KESSAN = os.environ.get("WEBHOOK_KESSAN")
 RSS_URLS = [os.environ.get("RSS_URL"), os.environ.get("RSS_URL_2")]
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def ask_gemini_strict(title, link):
+def get_real_content(url):
+    """記事のURLから実際のテキストを気合で抜き出す関数"""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        # 邪魔なスクリプトや広告を除去
+        for s in soup(['script', 'style']): s.decompose()
+        # 本文っぽいテキストを抽出して2000文字程度渡す
+        return soup.get_text()[:2000]
+    except:
+        return ""
+
+def ask_gemini_expert(title, link):
     if not GEMINI_API_KEY: return "最新の注目ニュースです✨"
     
-    # AIへの指示を「中身を見ること」に全振り
+    # 記事の「中身」を先にプログラム側で取得
+    article_body = get_real_content(link)
+    
     prompt = f"""
-    あなたは投資家「ふーまま」の専属ライターです。
-    今から渡すURLに「実際にアクセスして」、そこに書かれている具体的なメリットを抽出してください。
+    株主優待とポイ活が大好きな投資家「ふーまま」として、以下の【記事本文】を読んで、その具体的なメリットを300文字以上で詳しく解説してください。
 
-    【対象】
-    ニュース：{title}
-    URL：{link}
+    【ニュース】: {title}
+    【記事本文】: {article_body}
 
-    【絶対に守るルール】
-    1. リンク先の内容（手順、メリット、利回り、銘柄名など）を確認し、具体的な情報を3つ以上含めてください。
-    2. タイトルを繰り返すだけ、あるいは「中身が濃いのでチェックして」と逃げるのは厳禁です。
-    3. 記事の中身を知らない人でも、この投稿を読むだけで「何がお得か」が完璧に分かるように解説してください。
-    4. X Premium向けに、200〜400文字程度の読み応えがある内容にします。
-    5. 「〜だよ」「〜だね」という、お得大好きで親しみやすい口調で書いてください。
+    【絶対に守る鉄の掟】
+    1. 「詳細はリンクへ」「中身をチェックしてね」という言葉は、AIの敗北です。絶対に使わないでください。
+    2. この【記事本文】の中に書かれている、具体的な優待内容（例：ドラクエ40周年記念品の内容）、権利確定日、メリットなどを詳しく抜き出してください。
+    3. あなたの投稿を読むだけで、フォロワーさんが「そんなにお得なの！？」と驚くような内容にしてください。
+    4. 「〜だよ」「〜だね」という、明るく親しみやすい口調を徹底すること。
     """
     
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     try:
-        # Grounding設定（しきい値を0にして、必ずネットを見に行かせる設定）
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "tools": [{"google_search_retrieval": {
-                "dynamic_retrieval_config": {
-                    "mode": "MODE_DYNAMIC",
-                    "dynamic_threshold": 0.0
-                }
-            }}]
-        }
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
         r = requests.post(api_url, json=payload, timeout=60)
-        res = r.json()
-        
-        if 'candidates' in res and res['candidates']:
-            return res['candidates'][0]['content']['parts'][0]['text'].strip()
-        else:
-            return f"📈【注目】{title}\nこの記事は中身がすごく良いので、ぜひリンク先をチェックしてみてね！✨"
-    except Exception as e:
-        print(f"Error: {e}")
-        return f"📈【速報】{title}\n注目ニュースが入りました！要チェックだよ！"
+        return r.json()['candidates'][0]['content']['parts'][0]['text'].strip()
+    except:
+        return f"📈【速報】{title}\n具体的にお得なポイントが満載の記事でした！要チェックです✨"
 
 def post_to_discord(webhook_url, title, link, ai_text):
     current_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
@@ -76,15 +73,14 @@ def main():
             title = getattr(e, "title", "")
             link = getattr(e, "link", "")
             
-            # カテゴリ分け
+            # 分け方は以前のまま
+            target_webhook = WEBHOOK_OTHER
             if any(k in title for k in ["優待", "記念", "QUO", "カタログ"]):
                 target_webhook = WEBHOOK_YUTAI
             elif any(k in title for k in ["上方修正", "黒字", "増配", "サプライズ"]):
                 target_webhook = WEBHOOK_KESSAN
-            else:
-                target_webhook = WEBHOOK_OTHER
                 
-            ai_text = ask_gemini_strict(title, link)
+            ai_text = ask_gemini_expert(title, link)
             post_to_discord(target_webhook, title, link, ai_text)
             new_seen_list.append(eid)
     
