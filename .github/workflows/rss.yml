@@ -41,6 +41,9 @@ jobs:
           RSS_URL: ${{ secrets.RSS_URL }}
           RSS_URL_2: ${{ secrets.RSS_URL_2 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
         run: python main.py
 
       - name: Commit and push state
