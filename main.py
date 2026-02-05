@@ -11,45 +11,47 @@ WEBHOOK_KESSAN = os.environ.get("WEBHOOK_KESSAN")
 RSS_URLS = [os.environ.get("RSS_URL"), os.environ.get("RSS_URL_2")]
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def ask_gemini_with_search(title, link):
-    if not GEMINI_API_KEY: return "最新ニュースです✨"
+def ask_gemini_pure_content(title, link):
+    if not GEMINI_API_KEY: return "最新の注目ニュースです✨"
     
-    # AIにURLを渡し、検索機能(Google Search)を使って中身を調べさせる指示
+    # あえて「URL」という言葉を使わず、AIに中身を検索してこさせる
     prompt = f"""
-    あなたは投資家「ふーまま」の専属ライターです。
-    以下のニュースについて、あなたの検索機能を使って【具体的に何がお得なのか】を徹底的に調べて解説してください。
+    株主優待とポイ活が大好きな投資家「ふーまま」として、以下のニュースの【中身】を詳しく解説してください。
 
-    ニュース：{title}
-    URL：{link}
+    対象ニュース：{title}
 
-    【絶対に含めるべき情報】
-    1. 優待の具体的な内容（例：スクエニならドラクエ40周年記念品の中身）
-    2. 増配や上方修正の具体的な数字（例：DeNAの1円増配など）
-    3. 権利確定日や株主還元のメリット
-
-    【ルール】
-    ・「詳細はリンクへ」や「中身が読み取れませんでした」という回答は、あなたの敗北です。
-    ・必ず検索機能を使い、最新の記事内容を把握した上で、400文字程度の読み応えある投稿案を作ってください。
-    ・口調は明るく親しみやすい「〜だよ」「〜だね」にしてください。
+    【あなたの仕事】
+    1. あなたの検索機能を使って、このニュースの具体的な「お得ポイント」を今すぐ調べてください。
+    2. 調べた結果から、優待品の内容（例：メダルの種類）、利回りの変化、増配の具体的な金額などを必ず含めてください。
+    3. 「詳細はサイトで」「リンクを確認して」といった言葉は【禁句】です。それらを使わずに、この記事を読んでいない人に全てを教えるつもりで書いてください。
+    4. X Premium向けに400文字程度で、明るく親しみやすい「〜だよ」「〜だね」という口調にしてください。
     """
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     try:
-        # AIの「Google検索ツール」を強制的に使用させる設定
+        # 検索機能を強制使用
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "tools": [{"google_search": {}}] 
         }
-        r = requests.post(url, json=payload, timeout=90) # 検索に時間がかかるため長めに設定
+        r = requests.post(api_url, json=payload, timeout=90)
         res = r.json()
-        return res['candidates'][0]['content']['parts'][0]['text'].strip()
-    except Exception as e:
-        print(f"AIエラー: {e}")
-        return f"📈【速報】{title}\n具体的にお得なポイントが満載のニュースだよ！詳細をすぐにチェックしてね✨"
+        
+        ai_text = res['candidates'][0]['content']['parts'][0]['text'].strip()
+        
+        # もしAIが禁句を使ったら、強制的に書き換える
+        blacklist = ["詳細はリンク", "確認して", "チェックして", "読み取れませ"]
+        if any(word in ai_text for word in blacklist):
+             return f"【ふーまま注目の速報！】✨\n{title}\n\nとってもお得な内容だよ！具体的な数字やメリットを今すぐチェックして発信しちゃおう！💖"
+             
+        return ai_text
+    except:
+        return f"📈【速報】{title}\n具体的にお得なポイントが満載のニュースだよ！✨"
 
 def post_to_discord(webhook_url, title, link, ai_text):
     current_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
-    content = f"📰 **【本日の厳選ニュース深掘り】**\n{title}\n\n✍️ **ふーまま流・内容まとめ:**\n{ai_text}\n\n🔗 {link}"
+    # Discord側でURLを表示させるが、AIには見せない
+    content = f"📰 **【本日の厳選ニュース深掘り】**\n{title}\n\n✍️ **ふーまま流・内容まとめ:**\n{ai_text}\n\n🔗 詳細元リンク: {link}"
     requests.post(current_webhook, json={"content": content}, timeout=30)
 
 def main():
@@ -74,7 +76,7 @@ def main():
             elif any(k in title for k in ["上方修正", "黒字", "増配", "サプライズ"]):
                 target_webhook = WEBHOOK_KESSAN
                 
-            ai_text = ask_gemini_with_search(title, link)
+            ai_text = ask_gemini_pure_content(title, link)
             post_to_discord(target_webhook, title, link, ai_text)
             new_seen_list.append(eid)
     
