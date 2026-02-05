@@ -1,15 +1,8 @@
 import os
 import json
-import time
 from pathlib import Path
 import feedparser
 import requests
-from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from googlenewsdecoder import decoderv1 # リンク解読ツール
 
 # 設定
 WEBHOOK_OTHER = os.environ.get("DISCORD_WEBHOOK_URL")
@@ -18,67 +11,41 @@ WEBHOOK_KESSAN = os.environ.get("WEBHOOK_KESSAN")
 RSS_URLS = [os.environ.get("RSS_URL"), os.environ.get("RSS_URL_2")]
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def get_real_content_final(google_url):
-    """GoogleニュースのURLを解読して本番サイトを読み取る"""
-    try:
-        # 1. Googleニュースのリンクを本番URLにデコード
-        decoded_url = decoderv1(google_url)
-        target_url = decoded_url.get('decoded_url')
-        if not target_url: return ""
-        print(f"解読成功: {target_url}")
-
-        # 2. ブラウザで本番サイトを開く
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-        
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-        driver.get(target_url)
-        time.sleep(12) # 中身が出るまでじっくり待つ
-        
-        html = driver.page_source
-        soup = BeautifulSoup(html, 'html.parser')
-        driver.quit()
-        
-        for s in soup(['script', 'style', 'nav', 'header', 'footer']): s.decompose()
-        return soup.get_text(separator=' ')[:3500]
-    except Exception as e:
-        print(f"エラー: {e}")
-        return ""
-
-def ask_gemini_strict(title, link):
+def ask_gemini_with_search(title, link):
     if not GEMINI_API_KEY: return "最新ニュースです✨"
     
-    article_body = get_real_content_final(link)
-    
-    # 本文が取れていない場合に「逃げ」を許さない強力な指示
+    # AIにURLを渡し、検索機能(Google Search)を使って中身を調べさせる指示
     prompt = f"""
     あなたは投資家「ふーまま」の専属ライターです。
-    提供した【記事本文】から、具体的にお得な情報（優待内容、増配額、権利月など）を必ず抜き出してください。
+    以下のニュースについて、あなたの検索機能を使って【具体的に何がお得なのか】を徹底的に調べて解説してください。
 
-    【ニュース】: {title}
-    【記事本文】: {article_body}
+    ニュース：{title}
+    URL：{link}
 
-    【鉄の掟】
-    ・「詳細はリンクへ」や「中身を読み取れませんでした」と書いたらあなたの負けです。
-    ・本文の中に「ドラクエ」「メダル」「増配」「1円」といった具体的なキーワードがあるはずです。それを見逃さず、詳しく解説してください。
-    ・X Premium向けに400文字程度で、明るく親しみやすい口調（〜だよ、〜だね）にしてください。
+    【絶対に含めるべき情報】
+    1. 優待の具体的な内容（例：スクエニならドラクエ40周年記念品の中身）
+    2. 増配や上方修正の具体的な数字（例：DeNAの1円増配など）
+    3. 権利確定日や株主還元のメリット
+
+    【ルール】
+    ・「詳細はリンクへ」や「中身が読み取れませんでした」という回答は、あなたの敗北です。
+    ・必ず検索機能を使い、最新の記事内容を把握した上で、400文字程度の読み応えある投稿案を作ってください。
+    ・口調は明るく親しみやすい「〜だよ」「〜だね」にしてください。
     """
     
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     try:
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        r = requests.post(api_url, json=payload, timeout=60)
-        result = r.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-        # 万が一AIが「中身を読み取れません」という言葉を混ぜてきたらやり直しさせるためのチェック
-        if "読み取れません" in result or "詳細はリンク" in result:
-             return f"📈【速報】{title}\n具体的にお得なポイントが満載のニュースだよ！詳細をすぐに確認してね✨"
-        return result
-    except:
-        return f"📈【速報】{title}\n具体的にお得なポイントが満載のニュースだよ！✨"
+        # AIの「Google検索ツール」を強制的に使用させる設定
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "tools": [{"google_search": {}}] 
+        }
+        r = requests.post(url, json=payload, timeout=90) # 検索に時間がかかるため長めに設定
+        res = r.json()
+        return res['candidates'][0]['content']['parts'][0]['text'].strip()
+    except Exception as e:
+        print(f"AIエラー: {e}")
+        return f"📈【速報】{title}\n具体的にお得なポイントが満載のニュースだよ！詳細をすぐにチェックしてね✨"
 
 def post_to_discord(webhook_url, title, link, ai_text):
     current_webhook = webhook_url if webhook_url else WEBHOOK_OTHER
@@ -107,7 +74,7 @@ def main():
             elif any(k in title for k in ["上方修正", "黒字", "増配", "サプライズ"]):
                 target_webhook = WEBHOOK_KESSAN
                 
-            ai_text = ask_gemini_strict(title, link)
+            ai_text = ask_gemini_with_search(title, link)
             post_to_discord(target_webhook, title, link, ai_text)
             new_seen_list.append(eid)
     
