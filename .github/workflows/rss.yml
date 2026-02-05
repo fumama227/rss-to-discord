@@ -30,6 +30,7 @@ jobs:
           WEBHOOK_YUTAI: ${{ secrets.WEBHOOK_YUTAI }}
           WEBHOOK_KESSAN: ${{ secrets.WEBHOOK_KESSAN }}
           RSS_URL: ${{ secrets.RSS_URL }}
+          RSS_URL_2: ${{ secrets.RSS_URL_2 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
 
