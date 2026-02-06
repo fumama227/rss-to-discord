@@ -32,37 +32,38 @@ def post_to_discord(webhook_url, title, link):
     except Exception as e:
         print(f"Discord送信エラー: {e}")
 
-def send_email(title, link, category):
-    """Gmailにメールを送る"""
-    if not MAIL_USERNAME or not MAIL_PASSWORD or not MAIL_TO:
+def send_combined_email(news_items):
+    """溜まったニュースを1通のメールにまとめて送る"""
+    if not news_items or not MAIL_USERNAME or not MAIL_PASSWORD or not MAIL_TO:
         return
 
     msg = MIMEMultipart()
     msg['From'] = MAIL_USERNAME
     msg['To'] = MAIL_TO
-    msg['Subject'] = f"【ニュース】{category}: {title}"
+    msg['Subject'] = f"【一括通知】新着株ニュース（{len(news_items)}件）"
 
-    body = f"""
-    新しいニュースが届きました！
-    
-    ■タイトル
-    {title}
-    
-    ■リンク
-    {link}
-    
-    ---------------------------
-    Geminiに「ニュース調査フォルダを見て」と言うと、
-    このメールを読み込んで分析できます。
-    """
-    msg.attach(MIMEText(body, 'plain'))
+    # メールの本文を作成
+    body_intro = "新しいニュースが届きました！\n\n"
+    body_items = ""
+    for item in news_items:
+        body_items += f"■カテゴリ: {item['category']}\n"
+        body_items += f"■タイトル: {item['title']}\n"
+        body_items += f"■リンク: {item['link']}\n"
+        body_items += "---------------------------\n\n"
+
+    body_footer = """
+Geminiに「ニュース調査フォルダを見て」と言うと、
+このメールを読み込んで分析できます。
+"""
+    full_body = body_intro + body_items + body_footer
+    msg.attach(MIMEText(full_body, 'plain'))
 
     try:
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(MAIL_USERNAME, MAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"メール送信成功: {title}")
+        print(f"メール一括送信成功: {len(news_items)}件のニュース")
     except Exception as e:
         print(f"メール送信エラー: {e}")
 
@@ -71,6 +72,9 @@ def main():
     state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
     last_seen_list = state.get("last_seen_list", [])
     new_seen_list = []
+    
+    # 送信用にニュースを溜めるリスト
+    pending_news_for_email = []
     
     for url in RSS_URLS:
         if not url: continue
@@ -82,7 +86,7 @@ def main():
             title = getattr(e, "title", "")
             link = getattr(e, "link", "")
             
-            # カテゴリ判定（Discordの振分とメールの件名用）
+            # カテゴリ判定
             category = "速報"
             target_webhook = WEBHOOK_OTHER
             
@@ -93,13 +97,21 @@ def main():
                 category = "決算"
                 target_webhook = WEBHOOK_KESSAN
             
-            # 1. Discordに送る
+            # 1. Discordに送る（即座に通知）
             post_to_discord(target_webhook, title, link)
             
-            # 2. メールを送る
-            send_email(title, link, category)
+            # 2. メールのリストに追加
+            pending_news_for_email.append({
+                "title": title,
+                "link": link,
+                "category": category
+            })
             
             new_seen_list.append(eid)
+    
+    # 最後にメールを1通だけ送る
+    if pending_news_for_email:
+        send_combined_email(pending_news_for_email)
     
     updated_seen = (new_seen_list + last_seen_list)[:100]
     state["last_seen_list"] = updated_seen
